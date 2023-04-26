@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="dist/reset.css">
+		<link rel="stylesheet" href="dist/reveal.css">
+		<link rel="stylesheet" href="dist/theme/black.css">
+
+		<!-- Theme used for syntax highlighted code -->
+		<link rel="stylesheet" href="plugin/highlight/monokai.css">
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+        <section data-markdown>
+          <textarea data-template>
+            ## Useful Cats concepts workshop
+
+            ---
+
+            ## Imports to always include
+
+            ```scala
+            import cats._
+            import cats.data._
+            import cats.syntax.all._
+            ```
+            
+            ---
+            
+            ## Intro to cats - type classes
+            
+            - Functor
+              - `map`
+            - Applicative
+              - `pure`
+              - `ap` (apply wrapped function to wrapped value)
+              
+            ---
+
+            - Monad
+              - `flatMap`
+              - `flatten`
+              - (tailRecM) - stacksafe monadic recursion
+            - Semigroup
+              - `combine`
+            - Monoid
+              - `empty` (handy for `fold`)
+            
+            ---
+            
+            ```
+            Semigroup
+              |
+              v
+            Monoid
+              |
+              v
+            Functor      Applicative
+              \           |
+               \          v
+                \      Monad
+                 \      /
+                  \    /
+                   \  /
+                    \/
+              SemigroupK
+                    |
+                    v
+              MonoidK
+            ```
+            
+            ---
+            
+            ## Hidden gems in cats
+            
+            ---
+
+            `.lift` - to work with the value of Option, Either. Will return a success or failure.
+            
+            ```scala
+            import cats.syntax._
+            
+            val double: Int => Int = _ * 2
+            val optInt: Option[Int] = Some(3)
+            
+            // Using Cats syntax to lift the double function and apply it to the Option
+            val doubledOptInt: Option[Int] = double.lift(optInt)
+            ```
+            
+            ---
+
+            `flattenOption` - to filter out None values from a List and Map of Options
+            
+            `onError` - to log the error and return a default value
+            
+            ---
+            
+            `mapN` - to apply multiple wrapped parameters to a function
+
+            ```scala
+            import cats.syntax.all._
+
+            (username, password, url).mapN(attemptConnect)
+            ```
+
+            ---
+            
+            `asRight.asFuture` - to convert Either to Future
+
+            Instead of writing 
+            ```scala
+            Future.successful(Right(value)) 
+            //we can write 
+            value.asRight.asFuture
+            ```
+            
+            ---
+            
+            `.sequence` - to convert a `Collection[F[_]] to `F[Collection[_]]`
+            
+            `.traverse` is a combination of `map` and `sequence`
+            
+            ---
+
+            `.flatTraverse` when ending up with too much wrapping i.e. 
+            ```
+            Future[Option[Option[A]]]
+            Future[List[List[A]]] // — a bit awkward to process`
+            ```
+            
+            ---
+            
+            ```scala
+            import cats.syntax.all._
+              
+            lazy val valueOpt: Option[Int] = { /* ... */ ??? }
+            def compute(value: Int): Future[Option[Int]] = { /* ... */ ??? }
+            def computeOverValue: Future[Option[Option[Int]]] = 
+              valueOpt.traverse(compute) // Future[Option[Option[Int]]], not good
+            
+            // could be solved with
+            def computeOverValue2: Future[Option[Int]] = 
+              valueOpt.traverse(compute).map(_.flatten)
+            
+            // even nicer with
+            def computeOverValue3: Future[Option[Int]] = 
+              valueOpt.flatTraverse(compute)
+            ```
+            
+            ---
+            
+            `OptionT` - Related to EitherT. OptionT is for working with `F[Option[A]]` and can easily be converted to EitherT
+            
+            ---
+
+            ## Combinations
+            
+            How to combine partial functions
+            
+            ```scala
+            // Define three partial functions
+            val positiveSqrt: PartialFunction[Double, String] = {
+              case x if x > 0 => s"Sqrt of $x is ${math.sqrt(x)}"
+            }
+            
+            val negativeSqrt: PartialFunction[Double, String] = {
+              case x if x < 0 => s"Sqrt of $x is not defined (imaginary number)"
+            }
+            
+            val zeroSqrt: PartialFunction[Double, String] = {
+              case x if x == 0 => s"Sqrt of $x is 0"
+            }
+            ```
+
+            ---
+
+            ```scala
+            // Combine the partial functions using `orElse`
+            val sqrtDescription = 
+              positiveSqrt.orElse(negativeSqrt).orElse(zeroSqrt)
+            
+            // Test the combined partial function on different input values
+            val numbers = List(-4, -1, 0, 1, 4, 9)
+            val results = numbers.map(sqrtDescription)
+            println(results)
+            // Output:
+            // List(
+            //   "Sqrt of -4.0 is not defined (imaginary number)",
+            //   "Sqrt of -1.0 is not defined (imaginary number)",
+            //   "Sqrt of 0.0 is 0",
+            //   "Sqrt of 1.0 is 1.0",
+            //   "Sqrt of 4.0 is 2.0",
+            //   "Sqrt of 9.0 is 3.0"
+            // )
+            ```
+
+            ---
+            ## Validated
+            
+            Validated is a data type that represents success or failure with the ability to accumulate errors.
+            
+            ```scala
+            import cats.data.Validated
+            import cats.data.Validated.{Invalid, Valid}
+            ```
+            
+            ---
+            
+            ## Validated - Creating from other data types
+
+            ```scala
+            val validEither: Either[String, Int] = Right(42)
+            val invalidEither: Either[String, Int] = Left("Something went wrong")
+            
+            val validFromEither: Validated[String, Int] = 
+              Validated.fromEither(validEither)
+            val invalidFromEither: Validated[String, Int] = 
+              Validated.fromEither(invalidEither)
+            ```
+            
+            ---
+            
+            ## Validated - Combining multiple validations
+            
+            Use `mapN` to combine multiple validations:
+            
+            ```scala
+            import cats.data.NonEmptyList
+            import cats.syntax.all._
+            
+            def validateNonEmpty(s: String): Validated[NonEmptyList[String], String] =
+              if (s.isEmpty) Invalid(NonEmptyList.one("Empty string")) 
+              else Valid(s)
+            
+            val result: Validated[NonEmptyList[String], (String, String)] =
+              (validateNonEmpty("Hello"), validateNonEmpty("world"))
+              .mapN((_, _))
+            ```
+            
+            ---
+            ```scala
+            val validNecResult: Validated[String, Int] = 
+              42.validNec
+            val invalidNecResult: Validated[String, Int] = 
+              "Something went wrong".invalidNec
+            ```
+
+          </textarea>
+        </section>
+			</div>
+		</div>
+
+		<script src="dist/reveal.js"></script>
+		<script src="plugin/notes/notes.js"></script>
+		<script src="plugin/markdown/markdown.js"></script>
+		<script src="plugin/highlight/highlight.js"></script>
+		<script>
+			// More info about initialization & config:
+			// - https://revealjs.com/initialization/
+			// - https://revealjs.com/config/
+			Reveal.initialize({
+				hash: true,
+
+				// Learn about plugins: https://revealjs.com/plugins/
+				plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+			});
+		</script>
+	</body>
+</html>
